@@ -1,66 +1,201 @@
 import os
-from flask import Flask, jsonify, request
+from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import JSONResponse
 from supabase import create_client, Client
 from dotenv import load_dotenv
-from flask_cors import CORS # Importar CORS
+from datetime import datetime, timedelta
 
-load_dotenv()
+# --- Configuración Inicial ---
 
-app = Flask(__name__)
-CORS(app) # Habilitar CORS para toda la aplicación
+# Cargar variables de entorno (SUPABASE_URL, SUPABASE_KEY)
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
-# --- Conexión con Supabase ---
-try:
-    url = os.environ.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_KEY")
-    supabase: Client = create_client(url, key)
-    print("Conexión con Supabase establecida exitosamente.")
-except Exception as e:
-    print(f"Error al conectar con Supabase: {e}")
+# Crear la aplicación FastAPI
+app = FastAPI(
+    title="SolarTrace API",
+    description="API para el análisis espectral en tiempo real del invernadero.",
+    version="1.0.0"
+)
 
-# --- Rutas de la API ---
+# Configurar Supabase
+url: str = os.environ.get("SUPABASE_URL")
+key: str = os.environ.get("SUPABASE_KEY")
+supabase: Client = create_client(url, key)
 
-@app.route('/api/data/ingest', methods=['POST'])
-def ingest_data():
-    data = request.get_json()
+# --- Definición del Esquema de la DB (Asunción) ---
+#
+# Para que esto funcione, tu ESP32 debe estar subiendo datos a una tabla
+# en Supabase (ej. "sensor_readings") con una estructura similar a esta:
+#
+# - created_at (timestamp): Fecha y hora de la lectura
+# - sensor_id (text): 'Referencia', 'Cama_1', o 'Cama_2'
+# - ch_415 (int): ... (todos los 11 canales) ...
+# - ch_clear (int)
+# - total_lux (float): Lux total (opcional, pero útil)
+# - ppfd_total (float): PPFD Total (calculado en el ESP32, en μmol·m⁻²·s⁻¹)
+#
+# ¡El cálculo de PPFD es crucial para las métricas biológicas!
+#
+# -----------------------------------------------------
+
+# --- Montar el Frontend (Archivos Estáticos y Templates) ---
+
+# Servir archivos estáticos (css, js) desde la carpeta 'public'
+app.mount("/static", StaticFiles(directory="../public"), name="static")
+
+# Usar Jinja2 para servir el 'index.html'
+templates = Jinja2Templates(directory="../public")
+
+@app.get("/", include_in_schema=False)
+async def serve_index(request: Request):
+    """Sirve la página principal del dashboard."""
+    return templates.TemplateResponse("index.html", {"request": request})
+
+# --- API Endpoints ---
+
+@app.get("/api/data/current")
+async def get_current_data():
+    """
+    Obtiene la última lectura de CADA uno de los 3 sensores.
+    """
+    sensor_ids = ['Referencia', 'Cama_1', 'Cama_2']
+    data = {}
+
     try:
-        # No incluimos 'timestamp' porque la DB lo genera automáticamente
-        insert_data = {
-            "sensor_id": data.get("sensor_id"),
-            "ch_415": data.get("ch_415"), "ch_440": data.get("ch_440"),
-            "ch_485": data.get("ch_485"), "ch_515": data.get("ch_515"),
-            "ch_555": data.get("ch_555"), "ch_590": data.get("ch_590"),
-            "ch_610": data.get("ch_610"), "ch_680": data.get("ch_680"),
-            "ch_730": data.get("ch_730"), "ch_760": data.get("ch_760"),
-            "ch_860": data.get("ch_860"), "ch_clear": data.get("ch_clear"),
-            "total_lux": data.get("total_lux")
-        }
-        response = supabase.table('sensor_readings').insert(insert_data).execute()
-        return jsonify({"message": f"Éxito: Datos recibidos del sensor {data.get('sensor_id')}"}), 201
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        for sensor_id in sensor_ids:
+            # Obtener la última fila para este sensor_id
+            response = supabase.table('sensor_readings') \
+                               .select('*') \
+                               .eq('sensor_id', sensor_id) \
+                               .order('created_at', desc=True) \
+                               .limit(1) \
+                               .execute()
 
-@app.route('/api/data/current', methods=['GET'])
-def get_current_data():
-    try:
-        # Llamamos a la función que creamos en la base de datos
-        response = supabase.rpc('get_latest_readings').execute()
+            if response.data:
+                data[sensor_id] = response.data[0]
+            else:
+                data[sensor_id] = None # Sensor no encontrado o sin datos
+
+        return data
         
-        # Procesamos los datos para que tengan el formato {sensor_id: {datos}}
-        formatted_data = {}
-        for row in response.data:
-            sensor_id = row.get('sensor_id')
-            formatted_data[sensor_id] = row
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@app.get("/api/data/historical")
+async def get_historical_data(range_days: int = 1):
+    """
+    Obtiene datos históricos para un rango de días.
+    'range_days=1' significa "Hoy".
+    'range_days=7' significa "Últimos 7 días".
+    """
+    try:
+        # Calcular la fecha de inicio
+        if range_days <= 1:
+            # "Hoy" significa desde la medianoche de hoy
+            start_time = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        else:
+            # "Últimos X días"
+            start_time = datetime.now() - timedelta(days=range_days)
+        
+        # Convertir a formato de string ISO 8601 para Supabase
+        start_time_iso = start_time.isoformat()
+
+        # Consultar todos los datos desde la fecha de inicio
+        response = supabase.table('sensor_readings') \
+                           .select('created_at, sensor_id, ppfd_total, ch_680, ch_730') \
+                           .gte('created_at', start_time_iso) \
+                           .order('created_at', asc=True) \
+                           .execute()
+
+        if not response.data:
+            return JSONResponse(status_code=404, content={"error": "No data found for this range"})
+
+        # Reorganizar los datos por sensor_id para el frontend
+        grouped_data = {'Referencia': [], 'Cama_1': [], 'Cama_2': []}
+        for reading in response.data:
+            sensor_id = reading.get('sensor_id')
+            if sensor_id in grouped_data:
+                grouped_data[sensor_id].append(reading)
+
+        return grouped_data
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@app.get("/api/data/summary")
+async def get_summary_data(range_days: int = 1):
+    """
+    Calcula métricas clave (DLI, R:FR promedio) para un rango de días.
+    """
+    try:
+        # 1. Obtener los datos históricos (reutilizando la función anterior)
+        historical_data = await get_historical_data(range_days)
+        if isinstance(historical_data, JSONResponse): # Manejar error si no hay datos
+             return JSONResponse(status_code=404, content={"error": "No data to summarize"})
+
+        summary = {}
+
+        for sensor_id, readings in historical_data.items():
+            if not readings:
+                summary[sensor_id] = {'dli': 0, 'avg_rfr': 0}
+                continue
             
-        return jsonify(formatted_data), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+            # 2. Calcular DLI (Daily Light Integral)
+            # DLI es la integral de PPFD sobre el día, en mol·m⁻²·día⁻¹
+            # Usamos la regla del trapecio para la integración numérica.
+            
+            total_integral = 0.0 # en μmol·m⁻²
+            total_rfr = 0.0
+            rfr_count = 0
+            
+            # Ordenar por tiempo para asegurar la integración correcta
+            readings.sort(key=lambda x: x['created_at'])
+
+            for i in range(len(readings) - 1):
+                # Datos para DLI
+                t1 = datetime.fromisoformat(readings[i]['created_at'])
+                t2 = datetime.fromisoformat(readings[i+1]['created_at'])
+                ppfd1 = readings[i].get('ppfd_total', 0)
+                ppfd2 = readings[i+1].get('ppfd_total', 0)
+                
+                # Tiempo transcurrido en SEGUNDOS
+                delta_t = (t2 - t1).total_seconds()
+                
+                # Área del trapecio: (y1 + y2) / 2 * delta_x
+                trapezoid_area = ((ppfd1 + ppfd2) / 2) * delta_t
+                total_integral += trapezoid_area
+
+                # Datos para R:FR
+                ch_680 = readings[i].get('ch_680', 0)
+                ch_730 = readings[i].get('ch_730', 0)
+                if ch_730 > 0: # Evitar división por cero
+                    total_rfr += (ch_680 / ch_730)
+                    rfr_count += 1
+            
+            # Convertir integral total de μmol a mol (dividir por 1,000,000)
+            dli = total_integral / 1_000_000
+            
+            # Calcular R:FR promedio
+            avg_rfr = (total_rfr / rfr_count) if rfr_count > 0 else 0
+            
+            summary[sensor_id] = {
+                'dli': round(dli, 2),
+                'avg_rfr': round(avg_rfr, 2)
+            }
+
+        return summary
         
-# --- Ruta de Verificación (Health Check) ---
-@app.route('/')
-def index():
-    return "API de SOLARTRACE está en funcionamiento."
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
-# Nota: El bloque if __name__ == '__main__': no es necesario
-# porque Gunicorn se encargará de ejecutar la aplicación.
 
+# --- Ejecución del Servidor ---
+if __name__ == "__main__":
+    import uvicorn
+    # Ejecutar en localhost, puerto 8000
+    # En producción, usarías un servidor Gunicorn + Uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8000)
