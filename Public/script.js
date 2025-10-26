@@ -1,8 +1,20 @@
 document.addEventListener('DOMContentLoaded', () => {
 
-    // --- CONFIGURACIÓN ---
-    const API_URL = 'https://solartrace-api.onrender.com//api/data/current';
-    const UPDATE_INTERVAL = 5000; // Actualizar cada 5 segundos
+    // --- ESTADO GLOBAL Y CONFIGURACIÓN ---
+    let state = {
+        view: 'live', // 'live', 'today', '7days'
+        updateIntervalId: null,
+        charts: {},
+    };
+
+    const API_URLS = {
+        live: '/api/data/current',
+        summary_today: '/api/data/summary?range_days=1',
+        summary_7days: '/api/data/summary?range_days=7',
+        historical_today: '/api/data/historical?range_days=1',
+        historical_7days: '/api/data/historical?range_days=7',
+    };
+    const LIVE_UPDATE_INTERVAL = 5000; // 5 segundos
 
     const SPECTRAL_LABELS = [
         '415nm', '440nm', '485nm', '515nm', '555nm', '590nm',
@@ -14,18 +26,204 @@ document.addEventListener('DOMContentLoaded', () => {
         'ch_610', 'ch_680', 'ch_730', 'ch_760', 'ch_860', 'ch_clear'
     ];
 
-    // --- INICIALIZACIÓN DE GRÁFICOS ---
-    let charts = {};
+    // Mapeo de IDs de canvas a IDs de sensores de la API
+    const SENSOR_MAPPING = {
+        'Referencia': { canvasId: 'referenceChart', prefix: 'ref', color: 'rgba(54, 162, 235, 0.7)' },
+        'Cama_1': { canvasId: 'bed1Chart', prefix: 'bed1', color: 'rgba(75, 192, 192, 0.7)' },
+        'Cama_2': { canvasId: 'bed2Chart', prefix: 'bed2', color: 'rgba(255, 206, 86, 0.7)' }
+    };
 
-    const chartConfig = (label) => ({
+    // --- INICIALIZACIÓN ---
+    
+    function init() {
+        // Crear gráficos principales (inicialmente vacíos, tipo 'bar')
+        for (const sensorId in SENSOR_MAPPING) {
+            const { canvasId, color } = SENSOR_MAPPING[sensorId];
+            createChart(sensorId, canvasId, 'bar', `Espectro ${sensorId}`, color);
+        }
+        
+        // Crear gráfico de transmisión
+        initTransmissionChart();
+
+        // Configurar botones de rango de tiempo
+        document.getElementById('btn-live').addEventListener('click', () => setView('live'));
+        document.getElementById('btn-today').addEventListener('click', () => setView('today'));
+        document.getElementById('btn-7days').addEventListener('click', () => setView('7days'));
+
+        // Carga inicial
+        setView('live');
+    }
+
+    // --- MANEJO DE VISTAS (ESTADO) ---
+
+    function setView(newView) {
+        if (state.view === newView) return; // No hacer nada si la vista es la misma
+        state.view = newView;
+
+        // Detener actualizaciones en vivo si no estamos en 'live'
+        if (state.updateIntervalId) {
+            clearInterval(state.updateIntervalId);
+            state.updateIntervalId = null;
+        }
+
+        // Actualizar estilos de botones
+        document.querySelectorAll('.time-btn').forEach(btn => btn.classList.remove('active'));
+        document.getElementById(`btn-${newView}`).classList.add('active');
+
+        // Limpiar métricas
+        resetMetrics();
+
+        // Lanzar la actualización
+        updateDashboard();
+    }
+
+    // --- LÓGICA DE ACTUALIZACIÓN PRINCIPAL ---
+
+    async function updateDashboard() {
+        try {
+            if (state.view === 'live') {
+                await fetchAndDisplayLiveData();
+                // Iniciar el bucle de actualización en vivo
+                if (!state.updateIntervalId) {
+                    state.updateIntervalId = setInterval(fetchAndDisplayLiveData, LIVE_UPDATE_INTERVAL);
+                }
+            } else {
+                // Vistas 'today' o '7days'
+                const rangeKey = state.view; // 'today' o '7days'
+                // Estas vistas cargan una vez, sin intervalo
+                await Promise.all([
+                    fetchAndDisplayHistoricalData(API_URLS[`historical_${rangeKey}`]),
+                    fetchAndDisplaySummaryData(API_URLS[`summary_${rangeKey}`])
+                ]);
+            }
+        } catch (error) {
+            console.error("Error al actualizar el dashboard:", error);
+        }
+    }
+
+    // --- FUNCIONES DE OBTENCIÓN Y VISUALIZACIÓN ---
+
+    /**
+     * Vista "En Vivo": Obtiene y muestra los datos más recientes.
+     */
+    async function fetchAndDisplayLiveData() {
+        const response = await fetch(API_URLS.live);
+        if (!response.ok) throw new Error(`Error en API (live): ${response.statusText}`);
+        const data = await response.json();
+
+        const transmissionData = { bed1: [], bed2: [] };
+        const refData = data['Referencia'] ? DATA_KEYS.map(key => data['Referencia'][key] || 0) : [];
+
+        for (const sensorId in SENSOR_MAPPING) {
+            const sensorData = data[sensorId];
+            const { prefix, canvasId, color } = SENSOR_MAPPING[sensorId];
+
+            if (sensorData) {
+                // 1. Asegurar que el gráfico es tipo 'bar' (Espectro)
+                recreateChartIfNeeded(sensorId, canvasId, 'bar', `Espectro ${sensorId}`, color);
+                
+                // 2. Extraer datos del espectro
+                const spectralData = DATA_KEYS.map(key => sensorData[key] || 0);
+                state.charts[sensorId].data.labels = SPECTRAL_LABELS;
+                state.charts[sensorId].data.datasets[0].data = spectralData;
+                state.charts[sensorId].options.scales.x.type = 'category'; // Eje X categórico
+                state.charts[sensorId].update();
+                updateChartTitles(prefix, `Espectro de ${sensorId} (En Vivo)`, `Canales del sensor AS7341.`);
+
+
+                // 3. Actualizar Métricas Biológicas
+                const ppfd = sensorData.ppfd_total || 0;
+                const rfr = (sensorData.ch_730 > 0) ? (sensorData.ch_680 / sensorData.ch_730).toFixed(2) : 'N/A';
+                updateMetricsUI(prefix, ppfd.toFixed(0), '---', rfr);
+
+                // 4. Actualizar Heatmap
+                updateHeatmap(prefix, sensorData.total_lux || 0);
+
+                // 5. Preparar datos de transmisión (vs Referencia)
+                if (sensorId !== 'Referencia' && refData.length > 0) {
+                    const tData = spectralData.map((val, i) => {
+                        const refVal = refData[i];
+                        return (refVal > 0) ? ((val / refVal) * 100).toFixed(1) : 0;
+                    });
+                    if (sensorId === 'Cama_1') transmissionData.bed1 = tData;
+                    if (sensorId === 'Cama_2') transmissionData.bed2 = tData;
+                }
+            }
+        }
+        // 6. Actualizar gráfico de transmisión
+        updateTransmissionChart(transmissionData.bed1, transmissionData.bed2);
+    }
+
+    /**
+     * Vista "Histórica": Obtiene y muestra PPFD a lo largo del tiempo.
+     */
+    async function fetchAndDisplayHistoricalData(url) {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Error en API (historical): ${response.statusText}`);
+        const groupedData = await response.json();
+
+        for (const sensorId in SENSOR_MAPPING) {
+            const readings = groupedData[sensorId];
+            const { prefix, canvasId, color } = SENSOR_MAPPING[sensorId];
+
+            if (readings && readings.length > 0) {
+                // 1. Asegurar que el gráfico es tipo 'line' (Historial)
+                recreateChartIfNeeded(sensorId, canvasId, 'line', `Historial PPFD ${sensorId}`, color);
+
+                // 2. Formatear datos para el gráfico (tiempo, valor)
+                const chartData = readings.map(r => ({
+                    x: new Date(r.created_at), // Eje X como objeto Date
+                    y: r.ppfd_total || 0
+                }));
+                
+                state.charts[sensorId].data.labels = null; // No usamos labels categóricos
+                state.charts[sensorId].data.datasets[0].data = chartData;
+                state.charts[sensorId].options.scales.x.type = 'time'; // Eje X de tiempo
+                state.charts[sensorId].update();
+
+                const rangeText = (state.view === 'today') ? "de Hoy" : "de 7 Días";
+                updateChartTitles(prefix, `Historial PPFD de ${sensorId} (${rangeText})`, `Evolución de μmol·m⁻²·s⁻¹.`);
+
+            } else {
+                // No hay datos, limpiar gráfico
+                state.charts[sensorId].data.datasets[0].data = [];
+                state.charts[sensorId].update();
+            }
+        }
+    }
+
+    /**
+     * Vista "Histórica": Obtiene y muestra DLI y R:FR promedio.
+     */
+    async function fetchAndDisplaySummaryData(url) {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Error en API (summary): ${response.statusText}`);
+        const summaryData = await response.json();
+
+        for (const sensorId in summaryData) {
+            const { prefix } = SENSOR_MAPPING[sensorId];
+            const { dli, avg_rfr } = summaryData[sensorId];
+            
+            // Actualizar solo métricas DLI y RFR (PPFD es '---')
+            updateMetricsUI(prefix, '---', dli.toFixed(2), avg_rfr.toFixed(2));
+        }
+    }
+
+
+    // --- FUNCIONES DE UTILIDAD (Gráficos) ---
+
+    /**
+     * Configuración base para un gráfico de espectro (barras).
+     */
+    const getBarChartConfig = (label, color) => ({
         type: 'bar',
         data: {
             labels: SPECTRAL_LABELS,
             datasets: [{
                 label: label,
                 data: [],
-                backgroundColor: 'rgba(54, 162, 235, 0.6)',
-                borderColor: 'rgba(54, 162, 235, 1)',
+                backgroundColor: color.replace('0.7', '0.6'),
+                borderColor: color.replace('0.7', '1'),
                 borderWidth: 1,
                 borderRadius: 5,
             }]
@@ -35,83 +233,169 @@ document.addEventListener('DOMContentLoaded', () => {
             maintainAspectRatio: false,
             scales: {
                 y: { beginAtZero: true, grid: { color: '#d1d9e6' } },
-                x: { grid: { display: false } }
+                x: { type: 'category', grid: { display: false } }
             },
             plugins: { legend: { display: false } }
         }
     });
 
-    // Mapeo de IDs de canvas a IDs de sensores de la API
-    const chartMapping = {
-        'Referencia': 'referenceChart',
-        'Cama_1': 'bed1Chart',
-        'Cama_2': 'bed2Chart'
-    };
-
-    // Crear los gráficos usando el mapeo
-    for (const sensorId in chartMapping) {
-        const canvasId = chartMapping[sensorId];
-        const ctx = document.getElementById(canvasId).getContext('2d');
-        charts[sensorId] = new Chart(ctx, chartConfig(`Sensor ${sensorId}`));
-    }
-
-    // --- FUNCIONES AUXILIARES ---
-    function mapLuxToColor(lux, minLux = 0, maxLux = 1500) {
-        if (lux === null || lux === undefined) return '#a3b1c6';
-        const ratio = Math.min(Math.max(lux - minLux, 0) / (maxLux - minLux), 1);
-        const hue = 60 - (ratio * 60);
-        const lightness = 50 + (ratio * 10);
-        return `hsl(${hue}, 80%, ${lightness}%)`;
-    }
-
-    // --- FUNCIÓN PRINCIPAL DE ACTUALIZACIÓN ---
-    async function updateDashboard() {
-        try {
-            const response = await fetch(API_URL);
-            if (!response.ok) {
-                throw new Error(`Error en la API: ${response.statusText}`);
-            }
-            const data = await response.json();
-
-            for (const sensorId in data) {
-                const sensorData = data[sensorId];
-                const chart = charts[sensorId];
-
-                if (sensorData && chart) {
-                    // 1. Actualizar el gráfico
-                    const spectralData = DATA_KEYS.map(key => sensorData[key] || 0);
-                    chart.data.datasets[0].data = spectralData;
-                    chart.update();
-
-                    // 2. *** LÓGICA CORREGIDA PARA ENCONTRAR ELEMENTOS ***
-                    let elementPrefix;
-                    if (sensorId === 'Referencia') {
-                        elementPrefix = 'ref';
-                    } else if (sensorId === 'Cama_1') {
-                        elementPrefix = 'bed1';
-                    } else if (sensorId === 'Cama_2') {
-                        elementPrefix = 'bed2';
-                    }
-
-                    if (elementPrefix) {
-                        const luxValue = sensorData.total_lux || 0;
-                        
-                        // Actualizar texto de LUX
-                        const luxElement = document.getElementById(`lux-${elementPrefix}`);
-                        if (luxElement) luxElement.textContent = luxValue;
-                        
-                        // Actualizar color del heatmap
-                        const heatmapElement = document.getElementById(`heatmap-${elementPrefix}`);
-                        if (heatmapElement) heatmapElement.style.backgroundColor = mapLuxToColor(luxValue);
-                    }
+    /**
+     * Configuración base para un gráfico histórico (línea).
+     */
+    const getLineChartConfig = (label, color) => ({
+        type: 'line',
+        data: {
+            datasets: [{
+                label: label,
+                data: [], // Formato: {x: time, y: value}
+                backgroundColor: color.replace('0.7', '0.3'),
+                borderColor: color.replace('0.7', '1'),
+                borderWidth: 2,
+                pointRadius: 0,
+                fill: true,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: true, title: { display: true, text: 'PPFD (μmol·m⁻²·s⁻¹)' }, grid: { color: '#d1d9e6' } },
+                x: {
+                    type: 'time', // Eje de tiempo
+                    time: { unit: 'hour', displayFormats: { hour: 'HH:mm' } },
+                    grid: { display: false },
+                    title: { display: true, text: 'Hora del Día' }
                 }
-            }
-        } catch (error) {
-            console.error("No se pudo actualizar el dashboard:", error);
+            },
+            plugins: { legend: { display: false } }
+        }
+    });
+
+    /**
+     * Crea un nuevo gráfico y lo guarda en el estado.
+     */
+    function createChart(sensorId, canvasId, type, label, color) {
+        const ctx = document.getElementById(canvasId).getContext('2d');
+        const config = (type === 'bar') 
+            ? getBarChartConfig(label, color) 
+            : getLineChartConfig(label, color);
+        state.charts[sensorId] = new Chart(ctx, config);
+    }
+
+    /**
+     * Comprueba si un gráfico necesita cambiar de tipo (ej. bar -> line) y lo recrea.
+     */
+    function recreateChartIfNeeded(sensorId, canvasId, newType, label, color) {
+        const chart = state.charts[sensorId];
+        if (chart.config.type !== newType) {
+            chart.destroy();
+            createChart(sensorId, canvasId, newType, label, color);
+        } else {
+            // El tipo es el mismo, solo actualizar etiqueta
+            chart.data.datasets[0].label = label;
         }
     }
 
-    // --- EJECUCIÓN ---
-    updateDashboard(); 
-    setInterval(updateDashboard, UPDATE_INTERVAL);
+    /**
+     * Inicializa el gráfico de transmisión.
+     */
+    function initTransmissionChart() {
+        const ctx = document.getElementById('transmissionChart').getContext('2d');
+        state.charts['transmission'] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: SPECTRAL_LABELS.slice(0, -1), // Excluir 'Clear'
+                datasets: [
+                    {
+                        label: 'Cama 1 vs Referencia',
+                        data: [],
+                        borderColor: SENSOR_MAPPING['Cama_1'].color,
+                        backgroundColor: 'transparent',
+                        borderWidth: 3,
+                    },
+                    {
+                        label: 'Cama 2 vs Referencia',
+                        data: [],
+                        borderColor: SENSOR_MAPPING['Cama_2'].color,
+                        backgroundColor: 'transparent',
+                        borderWidth: 3,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true, max: 110, title: { display: true, text: 'Transmisión (%)' }, grid: { color: '#d1d9e6' } },
+                    x: { grid: { display: false } }
+                },
+                plugins: { legend: { display: true, position: 'top' } }
+            }
+        });
+    }
+
+    /**
+     * Actualiza el gráfico de transmisión con nuevos datos.
+     */
+    function updateTransmissionChart(bed1Data, bed2Data) {
+        const chart = state.charts['transmission'];
+        chart.data.datasets[0].data = bed1Data;
+        chart.data.datasets[1].data = bed2Data;
+        chart.update();
+    }
+
+
+    // --- FUNCIONES DE UTILIDAD (UI) ---
+
+    /**
+     * Actualiza los textos de las métricas clave.
+     */
+    function updateMetricsUI(prefix, ppfd, dli, rfr) {
+        document.getElementById(`metric-ppfd-${prefix}`).textContent = ppfd;
+        document.getElementById(`metric-dli-${prefix}`).textContent = dli;
+        document.getElementById(`metric-rfr-${prefix}`).textContent = rfr;
+    }
+
+    /**
+     * Limpia todas las métricas, usualmente al cambiar de vista.
+     */
+    function resetMetrics() {
+        ['ref', 'bed1', 'bed2'].forEach(prefix => {
+            updateMetricsUI(prefix, '---', '---', '---');
+        });
+    }
+
+    /**
+     * Actualiza el color del heatmap basado en Lux.
+     */
+    function updateHeatmap(prefix, lux) {
+        const el = document.getElementById(`heatmap-${prefix}`);
+        if (el) el.style.backgroundColor = mapLuxToColor(lux);
+    }
+
+    /**
+     * Actualiza los títulos y subtítulos de los gráficos.
+     */
+    function updateChartTitles(prefix, title, subtitle) {
+        document.getElementById(`chart-title-${prefix}`).textContent = title;
+        document.getElementById(`chart-subtitle-${prefix}`).textContent = subtitle;
+    }
+
+    /**
+     * Mapea un valor de Lux a un color HSL (de azul frío a amarillo cálido).
+     */
+    function mapLuxToColor(lux, minLux = 0, maxLux = 2000) { // Rango aumentado
+        if (lux === null || lux === undefined || lux < minLux) return '#a3b1c6'; // Gris por defecto
+        const ratio = Math.min(Math.max(lux - minLux, 0) / (maxLux - minLux), 1);
+        
+        // Interpolar de azul (hsl(210, 80%, 60%)) a amarillo (hsl(60, 80%, 60%))
+        const hue = 210 - (ratio * 150); 
+        const lightness = 55 + (ratio * 15); // Se vuelve un poco más brillante
+        const saturation = 70 + (ratio * 10);
+        
+        return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+    }
+
+    // --- ¡EJECUTAR! ---
+    init();
 });

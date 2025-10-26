@@ -1,5 +1,5 @@
-flask
+fastapi
+uvicorn[standard]
 supabase
 python-dotenv
-gunicorn
-flask-cors
+Jinja2Templates

@@ -3,54 +3,69 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SOLARTRACE Live - Dashboard de Invernadero</title>
+    <title>SOLARTRACE Pro - Dashboard Biológico</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script> <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
-    <link rel="stylesheet" href="style.css">
-
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 <body class="p-4 sm:p-6 lg:p-8">
     <div class="max-w-7xl mx-auto">
-        <header class="mb-8 text-center">
-            <h1 class="text-3xl sm:text-4xl font-bold text-gray-700">SOLARTRACE Live</h1>
-            <p class="text-gray-500 mt-1">Análisis espectral en tiempo real del invernadero</p>
+        <header class="mb-6">
+            <div class="flex flex-col sm:flex-row justify-between items-center">
+                <div>
+                    <h1 class="text-3xl sm:text-4xl font-bold text-gray-700">SOLARTRACE Pro</h1>
+                    <p class="text-gray-500 mt-1">Análisis fotobiológico del invernadero</p>
+                </div>
+                <div id="time-range-selector" class="neumorphic-flat p-2 flex space-x-2 mt-4 sm:mt-0">
+                    <button id="btn-live" class="time-btn active">En Vivo</button>
+                    <button id="btn-today" class="time-btn">Hoy</button>
+                    <button id="btn-7days" class="time-btn">7 Días</button>
+                </div>
+            </div>
         </header>
 
-        <main class="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
+        <main class="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
 
-            <div class="neumorphic p-6 lg:col-span-2">
-                <h2 class="text-xl font-bold text-gray-800 mb-1">Sensor de Referencia (Luz Incidente)</h2>
-                <p class="text-sm text-gray-500 mb-4">Mide el 100% de la luz que entra al invernadero.</p>
-                <div class="h-64 sm:h-80 neumorphic-inset p-2">
-                    <canvas id="referenceChart"></canvas>
-                </div>
-            </div>
+            <div class="lg:col-span-3 neumorphic p-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">Métricas Biológicas Clave</h2>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                    
+                    <div class="neumorphic-inset p-4">
+                        <h3 class="text-sm font-semibold text-gray-600 mb-1">PPFD Actual <span class="text-xs">(μmol·m⁻²·s⁻¹)</span></h3>
+                        <p class="text-gray-500 text-xs">Referencia:</p>
+                        <span id="metric-ppfd-ref" class="font-bold text-2xl text-blue-600 block">---</span>
+                        <p class="text-gray-500 text-xs mt-2">Cama 1:</p>
+                        <span id="metric-ppfd-bed1" class="font-bold text-2xl text-green-600 block">---</span>
+                        <p class="text-gray-500 text-xs mt-2">Cama 2:</p>
+                        <span id="metric-ppfd-bed2" class="font-bold text-2xl text-yellow-600 block">---</span>
+                    </div>
 
-            <div class="neumorphic p-6">
-                <h2 class="text-xl font-bold text-gray-800 mb-1">Cama de Cultivo 1</h2>
-                <p class="text-sm text-gray-500 mb-4">Luz a nivel de planta en la primera cama.</p>
-                <div class="h-64 sm:h-80 neumorphic-inset p-2">
-                    <canvas id="bed1Chart"></canvas>
-                </div>
-            </div>
+                    <div class="neumorphic-inset p-4">
+                        <h3 class="text-sm font-semibold text-gray-600 mb-1">DLI (Acumulado) <span class="text-xs">(mol·m⁻²·día⁻¹)</span></h3>
+                        <p class="text-gray-500 text-xs">Referencia:</p>
+                        <span id="metric-dli-ref" class="font-bold text-2xl text-blue-600 block">---</span>
+                        <p class="text-gray-500 text-xs mt-2">Cama 1:</p>
+                        <span id="metric-dli-bed1" class="font-bold text-2xl text-green-600 block">---</span>
+                        <p class="text-gray-500 text-xs mt-2">Cama 2:</p>
+                        <span id="metric-dli-bed2" class="font-bold text-2xl text-yellow-600 block">---</span>
+                    </div>
 
-            <div class="neumorphic p-6">
-                <h2 class="text-xl font-bold text-gray-800 mb-1">Cama de Cultivo 2</h2>
-                <p class="text-sm text-gray-500 mb-4">Luz a nivel de planta en la segunda cama.</p>
-                <div class="h-64 sm:h-80 neumorphic-inset p-2">
-                    <canvas id="bed2Chart"></canvas>
-                </div>
-            </div>
+                    <div class="neumorphic-inset p-4">
+                        <h3 class="text-sm font-semibold text-gray-600 mb-1">Ratio Rojo:Rojo Lejano</h3>
+                        <p class="text-gray-500 text-xs">Referencia:</p>
+                        <span id="metric-rfr-ref" class="font-bold text-2xl text-blue-600 block">---</span>
+                        <p class="text-gray-500 text-xs mt-2">Cama 1:</p>
+                        <span id="metric-rfr-bed1" class="font-bold text-2xl text-green-600 block">---</span>
+                        <p class="text-gray-500 text-xs mt-2">Cama 2:</p>
+                        <span id="metric-rfr-bed2" class="font-bold text-2xl text-yellow-600 block">---</span>
+                    </div>
 
-            <div class="neumorphic p-6 lg:col-span-2">
-                <h2 class="text-xl font-bold text-gray-800 mb-4">Mapa de Calor y Comparativas</h2>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div class="md:col-span-2 neumorphic-inset p-6 flex flex-col justify-between items-center h-64 relative">
-                        <span class="absolute top-2 left-2 text-xs text-gray-500">Esquema del Invernadero</span>
+                    <div class="neumorphic-inset p-4 flex flex-col justify-between items-center relative">
+                        <span class="absolute top-2 left-2 text-xs text-gray-500">Intensidad Relativa</span>
                         <div id="heatmap-ref" class="w-16 h-16 rounded-full transition-colors duration-1000 flex items-center justify-center text-white font-bold text-sm neumorphic" style="background-color: #a3b1c6;">
                             REF
                         </div>
@@ -63,18 +78,46 @@
                             </div>
                         </div>
                     </div>
-                    <div class="neumorphic-flat p-6 flex flex-col justify-center text-center space-y-2">
-                        <h3 class="font-bold text-gray-700 mb-2">Intensidad Total (LUX)</h3>
-                        <p class="text-sm text-gray-500">Referencia: <span id="lux-ref" class="font-bold text-lg text-gray-800 block">---</span></p>
-                        <p class="text-sm text-gray-500">Cama 1: <span id="lux-bed1" class="font-bold text-lg text-gray-800 block">---</span></p>
-                        <p class="text-sm text-gray-500">Cama 2: <span id="lux-bed2" class="font-bold text-lg text-gray-800 block">---</span></p>
+
+                </div>
+            </div>
+
+            <div class="neumorphic p-6 lg:col-span-3">
+                <h2 id="chart-title-ref" class="text-xl font-bold text-gray-800 mb-1">Sensor de Referencia</h2>
+                <p id="chart-subtitle-ref" class="text-sm text-gray-500 mb-4">Espectro de luz incidente en vivo.</p>
+                <div class="h-64 sm:h-80 neumorphic-inset p-2">
+                    <canvas id="referenceChart"></canvas>
+                </div>
+            </div>
+
+            <div class="neumorphic p-6 lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <h2 id="chart-title-bed1" class="text-xl font-bold text-gray-800 mb-1">Cama de Cultivo 1</h2>
+                    <p id="chart-subtitle-bed1" class="text-sm text-gray-500 mb-4">Espectro en vivo a nivel de planta.</p>
+                    <div class="h-64 sm:h-80 neumorphic-inset p-2">
+                        <canvas id="bed1Chart"></canvas>
                     </div>
+                </div>
+                <div>
+                    <h2 id="chart-title-bed2" class="text-xl font-bold text-gray-800 mb-1">Cama de Cultivo 2</h2>
+                    <p id="chart-subtitle-bed2" class="text-sm text-gray-500 mb-4">Espectro en vivo a nivel de planta.</p>
+                    <div class="h-64 sm:h-80 neumorphic-inset p-2">
+                        <canvas id="bed2Chart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="neumorphic p-6 lg:col-span-3">
+                <h2 class="text-xl font-bold text-gray-800 mb-1">Análisis de Transmisión (%)</h2>
+                <p class="text-sm text-gray-500 mb-4">Porcentaje de luz de referencia que llega a cada cama.</p>
+                <div class="h-64 sm:h-80 neumorphic-inset p-2">
+                    <canvas id="transmissionChart"></canvas>
                 </div>
             </div>
 
         </main>
     </div>
 
-    <script src="script.js" defer></script>
+    <script src="/static/script.js" defer></script>
 </body>
 </html>
