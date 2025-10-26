@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOLARTRACE Live - Dashboard de Invernadero</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Estilos base para el diseño de Neumorfismo */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #e0e5ec;
+        }
+        .neumorphic {
+            border-radius: 20px;
+            background: #e0e5ec;
+            box-shadow: 9px 9px 16px #a3b1c6, -9px -9px 16px #ffffff;
+        }
+        .neumorphic-inset {
+            border-radius: 20px;
+            background: #e0e5ec;
+            box-shadow: inset 7px 7px 15px #a3b1c6, inset -7px -7px 15px #ffffff;
+        }
+        .neumorphic-flat {
+             border-radius: 20px;
+             background: linear-gradient(145deg, #f0f5fd, #cad2db);
+             box-shadow: 5px 5px 10px #bec6cf, -5px -5px 10px #ffffff;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-6 lg:p-8">
+    <div class="max-w-7xl mx-auto">
+        <!-- Título Principal -->
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl sm:text-4xl font-bold text-gray-700">SOLARTRACE Live</h1>
+            <p class="text-gray-500 mt-1">Análisis espectral en tiempo real del invernadero</p>
+        </header>
+
+        <!-- Contenedor Principal del Dashboard -->
+        <main class="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
+
+            <!-- 1. Sensor de Referencia -->
+            <div class="neumorphic p-6 lg:col-span-2">
+                <h2 class="text-xl font-bold text-gray-800 mb-1">Sensor de Referencia (Luz Incidente)</h2>
+                <p class="text-sm text-gray-500 mb-4">Mide el 100% de la luz que entra al invernadero.</p>
+                <div class="h-64 sm:h-80 neumorphic-inset p-2">
+                    <canvas id="referenceChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 2. Cama de Cultivo 1 -->
+            <div class="neumorphic p-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-1">Cama de Cultivo 1</h2>
+                <p class="text-sm text-gray-500 mb-4">Luz a nivel de planta en la primera cama.</p>
+                <div class="h-64 sm:h-80 neumorphic-inset p-2">
+                    <canvas id="bed1Chart"></canvas>
+                </div>
+            </div>
+
+            <!-- 3. Cama de Cultivo 2 -->
+            <div class="neumorphic p-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-1">Cama de Cultivo 2</h2>
+                <p class="text-sm text-gray-500 mb-4">Luz a nivel de planta en la segunda cama.</p>
+                <div class="h-64 sm:h-80 neumorphic-inset p-2">
+                    <canvas id="bed2Chart"></canvas>
+                </div>
+            </div>
+
+            <!-- 4. Mapa de Calor y Datos Clave -->
+            <div class="neumorphic p-6 lg:col-span-2">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">Mapa de Calor y Comparativas</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Esquema del mapa de calor -->
+                    <div class="md:col-span-2 neumorphic-inset p-6 flex flex-col justify-between items-center h-64 relative">
+                        <span class="absolute top-2 left-2 text-xs text-gray-500">Esquema del Invernadero</span>
+                        <!-- Punto del Sensor de Referencia -->
+                        <div id="heatmap-ref" class="w-16 h-16 rounded-full transition-colors duration-1000 flex items-center justify-center text-white font-bold text-sm neumorphic" style="background-color: #a3b1c6;">
+                            REF
+                        </div>
+                        <div class="flex justify-around w-full">
+                            <div id="heatmap-bed1" class="w-16 h-16 rounded-full transition-colors duration-1000 flex items-center justify-center text-white font-bold text-sm neumorphic" style="background-color: #a3b1c6;">
+                                C1
+                            </div>
+                            <div id="heatmap-bed2" class="w-16 h-16 rounded-full transition-colors duration-1000 flex items-center justify-center text-white font-bold text-sm neumorphic" style="background-color: #a3b1c6;">
+                                C2
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Datos comparativos clave -->
+                    <div class="neumorphic-flat p-6 flex flex-col justify-center text-center space-y-2">
+                        <h3 class="font-bold text-gray-700 mb-2">Intensidad Total (LUX)</h3>
+                        <p class="text-sm text-gray-500">Referencia: <span id="lux-ref" class="font-bold text-lg text-gray-800 block">---</span></p>
+                        <p class="text-sm text-gray-500">Cama 1: <span id="lux-bed1" class="font-bold text-lg text-gray-800 block">---</span></p>
+                        <p class="text-sm text-gray-500">Cama 2: <span id="lux-bed2" class="font-bold text-lg text-gray-800 block">---</span></p>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- El motor de JavaScript que llenará el dashboard de vida -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+
+            // --- CONFIGURACIÓN ---
+            const API_URL = 'https://solartrace-api.onrender.com//api/data/current';
+            const UPDATE_INTERVAL = 5000; // Actualizar cada 5 segundos
+
+            const SPECTRAL_LABELS = [
+                '415nm', '440nm', '485nm', '515nm', '555nm', '590nm',
+                '610nm', '680nm', '730nm', '760nm', '860nm', 'Clear'
+            ];
+            
+            const DATA_KEYS = [
+                'ch_415', 'ch_440', 'ch_485', 'ch_515', 'ch_555', 'ch_590',
+                'ch_610', 'ch_680', 'ch_730', 'ch_760', 'ch_860', 'ch_clear'
+            ];
+
+            // --- INICIALIZACIÓN DE GRÁFICOS ---
+            let charts = {};
+
+            const chartConfig = (label) => ({
+                type: 'bar',
+                data: {
+                    labels: SPECTRAL_LABELS,
+                    datasets: [{
+                        label: label,
+                        data: [],
+                        backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1,
+                        borderRadius: 5,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: '#d1d9e6' } },
+                        x: { grid: { display: false } }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+
+            // Mapeo de IDs de canvas a IDs de sensores de la API
+            const chartMapping = {
+                'Referencia': 'referenceChart',
+                'Cama_1': 'bed1Chart',
+                'Cama_2': 'bed2Chart'
+            };
+
+            // Crear los gráficos usando el mapeo
+            for (const sensorId in chartMapping) {
+                const canvasId = chartMapping[sensorId];
+                const ctx = document.getElementById(canvasId).getContext('2d');
+                charts[sensorId] = new Chart(ctx, chartConfig(`Sensor ${sensorId}`));
+            }
+
+            // --- FUNCIONES AUXILIARES ---
+            function mapLuxToColor(lux, minLux = 0, maxLux = 1500) {
+                if (lux === null || lux === undefined) return '#a3b1c6';
+                const ratio = Math.min(Math.max(lux - minLux, 0) / (maxLux - minLux), 1);
+                const hue = 60 - (ratio * 60);
+                const lightness = 50 + (ratio * 10);
+                return `hsl(${hue}, 80%, ${lightness}%)`;
+            }
+
+            // --- FUNCIÓN PRINCIPAL DE ACTUALIZACIÓN ---
+            async function updateDashboard() {
+                try {
+                    const response = await fetch(API_URL);
+                    if (!response.ok) {
+                        throw new Error(`Error en la API: ${response.statusText}`);
+                    }
+                    const data = await response.json();
+
+                    for (const sensorId in data) {
+                        const sensorData = data[sensorId];
+                        const chart = charts[sensorId];
+
+                        if (sensorData && chart) {
+                            // 1. Actualizar el gráfico
+                            const spectralData = DATA_KEYS.map(key => sensorData[key] || 0);
+                            chart.data.datasets[0].data = spectralData;
+                            chart.update();
+
+                            // 2. *** LÓGICA CORREGIDA PARA ENCONTRAR ELEMENTOS ***
+                            let elementPrefix;
+                            if (sensorId === 'Referencia') {
+                                elementPrefix = 'ref';
+                            } else if (sensorId === 'Cama_1') {
+                                elementPrefix = 'bed1';
+                            } else if (sensorId === 'Cama_2') {
+                                elementPrefix = 'bed2';
+                            }
+
+                            if (elementPrefix) {
+                                const luxValue = sensorData.total_lux || 0;
+                                
+                                // Actualizar texto de LUX
+                                const luxElement = document.getElementById(`lux-${elementPrefix}`);
+                                if (luxElement) luxElement.textContent = luxValue;
+                                
+                                // Actualizar color del heatmap
+                                const heatmapElement = document.getElementById(`heatmap-${elementPrefix}`);
+                                if (heatmapElement) heatmapElement.style.backgroundColor = mapLuxToColor(luxValue);
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error("No se pudo actualizar el dashboard:", error);
+                }
+            }
+
+            // --- EJECUCIÓN ---
+            updateDashboard(); 
+            setInterval(updateDashboard, UPDATE_INTERVAL);
+        });
+    </script>
+</body>
+</html>
+
