@@ -1,0 +1,20 @@
+/* Estilos base para el diseño de Neumorfismo */
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #e0e5ec;
+}
+.neumorphic {
+    border-radius: 20px;
+    background: #e0e5ec;
+    box-shadow: 9px 9px 16px #a3b1c6, -9px -9px 16px #ffffff;
+}
+.neumorphic-inset {
+    border-radius: 20px;
+    background: #e0e5ec;
+    box-shadow: inset 7px 7px 15px #a3b1c6, inset -7px -7px 15px #ffffff;
+}
+.neumorphic-flat {
+     border-radius: 20px;
+     background: linear-gradient(145deg, #f0f5fd, #cad2db);
+     box-shadow: 5px 5px 10px #bec6cf, -5px -5px 10px #ffffff;
+}
