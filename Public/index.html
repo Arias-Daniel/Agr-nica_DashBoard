@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOLARTRACE Live - Dashboard de Invernadero</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="style.css">
+
+</head>
+<body class="p-4 sm:p-6 lg:p-8">
+    <div class="max-w-7xl mx-auto">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl sm:text-4xl font-bold text-gray-700">SOLARTRACE Live</h1>
+            <p class="text-gray-500 mt-1">Análisis espectral en tiempo real del invernadero</p>
+        </header>
+
+        <main class="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
+
+            <div class="neumorphic p-6 lg:col-span-2">
+                <h2 class="text-xl font-bold text-gray-800 mb-1">Sensor de Referencia (Luz Incidente)</h2>
+                <p class="text-sm text-gray-500 mb-4">Mide el 100% de la luz que entra al invernadero.</p>
+                <div class="h-64 sm:h-80 neumorphic-inset p-2">
+                    <canvas id="referenceChart"></canvas>
+                </div>
+            </div>
+
+            <div class="neumorphic p-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-1">Cama de Cultivo 1</h2>
+                <p class="text-sm text-gray-500 mb-4">Luz a nivel de planta en la primera cama.</p>
+                <div class="h-64 sm:h-80 neumorphic-inset p-2">
+                    <canvas id="bed1Chart"></canvas>
+                </div>
+            </div>
+
+            <div class="neumorphic p-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-1">Cama de Cultivo 2</h2>
+                <p class="text-sm text-gray-500 mb-4">Luz a nivel de planta en la segunda cama.</p>
+                <div class="h-64 sm:h-80 neumorphic-inset p-2">
+                    <canvas id="bed2Chart"></canvas>
+                </div>
+            </div>
+
+            <div class="neumorphic p-6 lg:col-span-2">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">Mapa de Calor y Comparativas</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="md:col-span-2 neumorphic-inset p-6 flex flex-col justify-between items-center h-64 relative">
+                        <span class="absolute top-2 left-2 text-xs text-gray-500">Esquema del Invernadero</span>
+                        <div id="heatmap-ref" class="w-16 h-16 rounded-full transition-colors duration-1000 flex items-center justify-center text-white font-bold text-sm neumorphic" style="background-color: #a3b1c6;">
+                            REF
+                        </div>
+                        <div class="flex justify-around w-full">
+                            <div id="heatmap-bed1" class="w-16 h-16 rounded-full transition-colors duration-1000 flex items-center justify-center text-white font-bold text-sm neumorphic" style="background-color: #a3b1c6;">
+                                C1
+                            </div>
+                            <div id="heatmap-bed2" class="w-16 h-16 rounded-full transition-colors duration-1000 flex items-center justify-center text-white font-bold text-sm neumorphic" style="background-color: #a3b1c6;">
+                                C2
+                            </div>
+                        </div>
+                    </div>
+                    <div class="neumorphic-flat p-6 flex flex-col justify-center text-center space-y-2">
+                        <h3 class="font-bold text-gray-700 mb-2">Intensidad Total (LUX)</h3>
+                        <p class="text-sm text-gray-500">Referencia: <span id="lux-ref" class="font-bold text-lg text-gray-800 block">---</span></p>
+                        <p class="text-sm text-gray-500">Cama 1: <span id="lux-bed1" class="font-bold text-lg text-gray-800 block">---</span></p>
+                        <p class="text-sm text-gray-500">Cama 2: <span id="lux-bed2" class="font-bold text-lg text-gray-800 block">---</span></p>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script src="script.js" defer></script>
+</body>
+</html>
