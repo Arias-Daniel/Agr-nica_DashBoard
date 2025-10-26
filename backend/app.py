@@ -1,11 +1,12 @@
 import os
-from pathlib import Path # ¡NUEVO!
+from pathlib import Path 
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from supabase import create_client, Client
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
+from fastapi.responses import JSONResponse
 
 # --- Configuración Inicial ---
 
