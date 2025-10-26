@@ -1,16 +1,24 @@
 import os
+from pathlib import Path # ¡NUEVO!
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import JSONResponse
 from supabase import create_client, Client
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 
 # --- Configuración Inicial ---
 
-# Cargar variables de entorno (SUPABASE_URL, SUPABASE_KEY)
-load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
+# ¡NUEVO! Definir rutas absolutas
+# __file__ es la ubicación de app.py
+APP_DIR = Path(__file__).parent 
+# BASE_DIR es la raíz del proyecto (un nivel arriba de backend/)
+BASE_DIR = APP_DIR.parent
+# PUBLIC_DIR es la carpeta public
+PUBLIC_DIR = BASE_DIR / "public"
+
+# Cargar variables de entorno desde la raíz del proyecto
+load_dotenv(BASE_DIR / ".env")
 
 # Crear la aplicación FastAPI
 app = FastAPI(
@@ -24,29 +32,15 @@ url: str = os.environ.get("SUPABASE_URL")
 key: str = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(url, key)
 
-# --- Definición del Esquema de la DB (Asunción) ---
-#
-# Para que esto funcione, tu ESP32 debe estar subiendo datos a una tabla
-# en Supabase (ej. "sensor_readings") con una estructura similar a esta:
-#
-# - created_at (timestamp): Fecha y hora de la lectura
-# - sensor_id (text): 'Referencia', 'Cama_1', o 'Cama_2'
-# - ch_415 (int): ... (todos los 11 canales) ...
-# - ch_clear (int)
-# - total_lux (float): Lux total (opcional, pero útil)
-# - ppfd_total (float): PPFD Total (calculado en el ESP32, en μmol·m⁻²·s⁻¹)
-#
-# ¡El cálculo de PPFD es crucial para las métricas biológicas!
-#
-# -----------------------------------------------------
+# ... (resto de la configuración de supabase) ...
 
 # --- Montar el Frontend (Archivos Estáticos y Templates) ---
 
-# Servir archivos estáticos (css, js) desde la carpeta 'public'
-app.mount("/static", StaticFiles(directory="../public"), name="static")
+# ¡CORREGIDO! Usar la ruta absoluta a 'public'
+app.mount("/static", StaticFiles(directory=PUBLIC_DIR), name="static")
 
-# Usar Jinja2 para servir el 'index.html'
-templates = Jinja2Templates(directory="../public")
+# ¡CORREGIDO! Usar la ruta absoluta a 'public'
+templates = Jinja2Templates(directory=PUBLIC_DIR)
 
 @app.get("/", include_in_schema=False)
 async def serve_index(request: Request):

@@ -2,6 +2,7 @@
 body {
     font-family: 'Inter', sans-serif;
     background-color: #e0e5ec;
+    color: #333; /* Añadido para mejor legibilidad */
 }
 .neumorphic {
     border-radius: 20px;
@@ -17,4 +18,26 @@ body {
      border-radius: 20px;
      background: linear-gradient(145deg, #f0f5fd, #cad2db);
      box-shadow: 5px 5px 10px #bec6cf, -5px -5px 10px #ffffff;
+}
+
+/* ¡NUEVO! Estilos para el selector de tiempo */
+.time-btn {
+    padding: 8px 16px;
+    border-radius: 12px;
+    font-weight: 600;
+    color: #5a6a85;
+    background: #e0e5ec;
+    box-shadow: 5px 5px 10px #a3b1c6, -5px -5px 10px #ffffff;
+    transition: all 0.2s ease-in-out;
+}
+
+.time-btn:hover {
+    color: #334155;
+}
+
+.time-btn.active {
+    /* Estilo "presionado" o inset */
+    color: #3a5a9c;
+    background: #e0e5ec;
+    box-shadow: inset 5px 5px 10px #a3b1c6, inset -5px -5px 10px #ffffff;
 }
