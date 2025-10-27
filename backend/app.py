@@ -48,7 +48,11 @@ async def serve_index(request: Request):
     """Sirve la página principal del dashboard."""
     return templates.TemplateResponse("index.html", {"request": request})
 
-# --- API Endpoints ---
+@app.head("/", include_in_schema=False)
+async def serve_index_head():
+    """Responde a los pings 'HEAD' de los monitores de uptime."""
+    return Response(status_code=200, media_type="text/html")
+# --- FIN DE LA NUEVA FUNCIÓN ---
 
 @app.get("/api/data/current")
 async def get_current_data():
