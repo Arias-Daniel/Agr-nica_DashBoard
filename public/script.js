@@ -80,26 +80,27 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- LÓGICA DE ACTUALIZACIÓN PRINCIPAL ---
 
     async function updateDashboard() {
-        try {
-            if (state.view === 'live') {
-                await fetchAndDisplayLiveData();
-                // Iniciar el bucle de actualización en vivo
-                if (!state.updateIntervalId) {
-                    state.updateIntervalId = setInterval(fetchAndDisplayLiveData, LIVE_UPDATE_INTERVAL);
-                }
+         try {
+             if (state.view === 'live') {
+                 await fetchAndDisplayLiveData(); // Intenta la primera carga
             } else {
-                // Vistas 'today' o '7days'
-                const rangeKey = state.view; // 'today' o '7days'
-                // Estas vistas cargan una vez, sin intervalo
+                 // Vistas 'today' o '7days'
+                 const rangeKey = state.view; 
                 await Promise.all([
                     fetchAndDisplayHistoricalData(API_URLS[`historical_${rangeKey}`]),
                     fetchAndDisplaySummaryData(API_URLS[`summary_${rangeKey}`])
-                ]);
-            }
-        } catch (error) {
+                 ]);
+             }
+    } catch (error) {
             console.error("Error al actualizar el dashboard:", error);
-        }
-    }
+         } finally {
+            // ¡NUEVO! Este bloque se ejecuta SIEMPRE (con éxito o con error)
+            // Nos aseguramos de que el intervalo se inicie si estamos en 'live'.
+             if (state.view === 'live' && !state.updateIntervalId) {
+                 state.updateIntervalId = setInterval(fetchAndDisplayLiveData, LIVE_UPDATE_INTERVAL);
+             }
+         }
+     }
 
     // --- FUNCIONES DE OBTENCIÓN Y VISUALIZACIÓN ---
 
@@ -107,53 +108,61 @@ document.addEventListener('DOMContentLoaded', () => {
      * Vista "En Vivo": Obtiene y muestra los datos más recientes.
      */
     async function fetchAndDisplayLiveData() {
-        const response = await fetch(API_URLS.live);
-        if (!response.ok) throw new Error(`Error en API (live): ${response.statusText}`);
-        const data = await response.json();
+        
+        try {
 
-        const transmissionData = { bed1: [], bed2: [] };
-        const refData = data['Referencia'] ? DATA_KEYS.map(key => data['Referencia'][key] || 0) : [];
+            const response = await fetch(API_URLS.live);
+            if (!response.ok) throw new Error(`Error en API (live): ${response.statusText}`);
+            const data = await response.json();
 
-        for (const sensorId in SENSOR_MAPPING) {
-            const sensorData = data[sensorId];
-            const { prefix, canvasId, color } = SENSOR_MAPPING[sensorId];
+            const transmissionData = { bed1: [], bed2: [] };
+            const refData = data['Referencia'] ? DATA_KEYS.map(key => data['Referencia'][key] || 0) : [];
 
-            if (sensorData) {
-                // 1. Asegurar que el gráfico es tipo 'bar' (Espectro)
-                recreateChartIfNeeded(sensorId, canvasId, 'bar', `Espectro ${sensorId}`, color);
-                
-                // 2. Extraer datos del espectro
-                const spectralData = DATA_KEYS.map(key => sensorData[key] || 0);
-                state.charts[sensorId].data.labels = SPECTRAL_LABELS;
-                state.charts[sensorId].data.datasets[0].data = spectralData;
-                state.charts[sensorId].options.scales.x.type = 'category'; // Eje X categórico
-                state.charts[sensorId].update();
-                updateChartTitles(prefix, `Espectro de ${sensorId} (En Vivo)`, `Canales del sensor AS7341.`);
+            for (const sensorId in SENSOR_MAPPING) {
+                const sensorData = data[sensorId];
+                const { prefix, canvasId, color } = SENSOR_MAPPING[sensorId];
+
+                if (sensorData) {
+                    // 1. Asegurar que el gráfico es tipo 'bar' (Espectro)
+                    recreateChartIfNeeded(sensorId, canvasId, 'bar', `Espectro ${sensorId}`, color);
+                    
+                    // 2. Extraer datos del espectro
+                    const spectralData = DATA_KEYS.map(key => sensorData[key] || 0);
+                    state.charts[sensorId].data.labels = SPECTRAL_LABELS;
+                    state.charts[sensorId].data.datasets[0].data = spectralData;
+                    state.charts[sensorId].options.scales.x.type = 'category'; // Eje X categórico
+                    state.charts[sensorId].update();
+                    updateChartTitles(prefix, `Espectro de ${sensorId} (En Vivo)`, `Canales del sensor AS7341.`);
 
 
-                // 3. Actualizar Métricas Biológicas
-                const ppfd = sensorData.ppfd_total || 0;
-                const rfr = (sensorData.ch_730 > 0) ? (sensorData.ch_680 / sensorData.ch_730).toFixed(2) : 'N/A';
-                updateMetricsUI(prefix, ppfd.toFixed(0), '---', rfr);
+                    // 3. Actualizar Métricas Biológicas
+                    const ppfd = sensorData.ppfd_total || 0;
+                    const rfr = (sensorData.ch_730 > 0) ? (sensorData.ch_680 / sensorData.ch_730).toFixed(2) : 'N/A';
+                    updateMetricsUI(prefix, ppfd.toFixed(0), '---', rfr);
 
-                // 4. Actualizar Heatmap
-                updateHeatmap(prefix, sensorData.total_lux || 0);
+                    // 4. Actualizar Heatmap
+                    updateHeatmap(prefix, sensorData.total_lux || 0);
 
-                // 5. Preparar datos de transmisión (vs Referencia)
-                if (sensorId !== 'Referencia' && refData.length > 0) {
-                    const tData = spectralData.map((val, i) => {
-                        const refVal = refData[i];
-                        return (refVal > 0) ? ((val / refVal) * 100).toFixed(1) : 0;
-                    });
-                    if (sensorId === 'Cama_1') transmissionData.bed1 = tData;
-                    if (sensorId === 'Cama_2') transmissionData.bed2 = tData;
+                    // 5. Preparar datos de transmisión (vs Referencia)
+                    if (sensorId !== 'Referencia' && refData.length > 0) {
+                        const tData = spectralData.map((val, i) => {
+                            const refVal = refData[i];
+                            return (refVal > 0) ? ((val / refVal) * 100).toFixed(1) : 0;
+                        });
+                        if (sensorId === 'Cama_1') transmissionData.bed1 = tData;
+                        if (sensorId === 'Cama_2') transmissionData.bed2 = tData;
+                    }
                 }
             }
+            // 6. Actualizar gráfico de transmisión
+            updateTransmissionChart(transmissionData.bed1, transmissionData.bed2);
+        
+    } catch (error) { // <--- ¡AÑADIR ESTE CATCH!
+            console.error("Error en el ciclo 'En Vivo', reintentando en 5s:", error);
+            // No hacemos 'throw' para que el setInterval siga intentándolo.
         }
-        // 6. Actualizar gráfico de transmisión
-        updateTransmissionChart(transmissionData.bed1, transmissionData.bed2);
-    }
-
+    }   
+            
     /**
      * Vista "Histórica": Obtiene y muestra PPFD a lo largo del tiempo.
      */
