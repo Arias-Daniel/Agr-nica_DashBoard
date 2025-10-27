@@ -6,7 +6,7 @@ from fastapi.templating import Jinja2Templates
 from supabase import create_client, Client
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 # --- Configuración Inicial ---
 
